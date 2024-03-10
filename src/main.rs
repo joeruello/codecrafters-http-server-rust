@@ -64,7 +64,7 @@ fn handle_request(mut stream: TcpStream) -> anyhow::Result<()> {
             let dir: PathBuf = args.directory;
             let path = dir.join(filename);
             let file = fs::read(path)?;
-            Response::from_status_and_body(Status::Ok, Body::new("text/plain", &file))
+            Response::from_status_and_body(Status::Ok, Body::new("application/octet-stream", &file))
         }
         Some(&"") => Response::with_status(Status::Ok),
         _ => Response::with_status(Status::NotFound),
