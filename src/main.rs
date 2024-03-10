@@ -1,80 +1,13 @@
-use std::{
-    io::{BufRead, BufReader, Write},
-    net::TcpListener,
-    str,
+use crate::{
+    request::Request,
+    response::{Body, Response, Status},
 };
-
 use anyhow::Context;
 use itertools::Itertools;
+use std::net::TcpListener;
 
-#[derive(Debug)]
-enum Status {
-    Ok,
-    NotFound,
-}
-
-impl From<Status> for &[u8] {
-    fn from(value: Status) -> Self {
-        match value {
-            Status::Ok => b"200 OK",
-            Status::NotFound => b"404 Not Found",
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Response {
-    status: Status,
-    body: Option<Body>,
-}
-
-impl Response {
-    fn with_status(status: Status) -> Self {
-        Self { status, body: None }
-    }
-
-    fn from_status_and_body(status: Status, body: Body) -> Self {
-        Self {
-            status,
-            body: Some(body),
-        }
-    }
-
-    fn write(self, w: &mut impl Write) -> anyhow::Result<()> {
-        w.write(b"HTTP/1.1 ").context("Writing proto")?;
-        w.write(self.status.into()).context("Writing status")?;
-        w.write(b"\r\n").context("end of start line")?;
-        if let Some(body) = self.body {
-            body.write(w).context("Writing body")?;
-        } else {
-            w.write(b"\r\n").context("end of start line")?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct Body {
-    content_type: String,
-    content: Vec<u8>,
-}
-
-impl Body {
-    fn new(content_type: impl Into<String>, content: &[u8]) -> Self {
-        Self {
-            content: content.to_vec(),
-            content_type: content_type.into(),
-        }
-    }
-
-    fn write(self, w: &mut impl Write) -> anyhow::Result<()> {
-        write!(w, "Content-Type: {} \r\n", self.content_type)?;
-        write!(w, "Content-Length: {} \r\n", self.content.len())?;
-        write!(w, "\r\n")?;
-        w.write(&self.content)?;
-        Ok(())
-    }
-}
+mod request;
+mod response;
 
 fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
@@ -82,18 +15,9 @@ fn main() -> anyhow::Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                let mut buf = Vec::new();
-                let mut reader = BufReader::new(&mut stream);
-                reader
-                    .read_until(b'\r', &mut buf)
-                    .context("Reading stream")?;
+                let req = Request::read(&mut stream).context("Parsing request")?;
 
-                let (_method, path, _proto) = buf
-                    .splitn(3, |b| b.is_ascii_whitespace())
-                    .collect_tuple()
-                    .context("Should have 3 parts")?;
-                let path = str::from_utf8(path).context("We only support utf8 for now")?;
-                let path_parts = path.split("/").collect_vec();
+                let path_parts = req.path.split("/").collect_vec();
 
                 eprintln!("{path_parts:?}");
 
@@ -101,6 +25,16 @@ fn main() -> anyhow::Result<()> {
                     Some(&"echo") => {
                         let rest = path_parts[2..].join("/");
                         let body = Body::new("text/plain", rest.as_bytes());
+                        Response::from_status_and_body(Status::Ok, body)
+                    }
+                    Some(&"user-agent") => {
+                        let body = Body::new(
+                            "text/plain",
+                            req.headers
+                                .get("user-agent")
+                                .context("Should have a user-agent")?
+                                .as_bytes(),
+                        );
                         Response::from_status_and_body(Status::Ok, body)
                     }
                     Some(&"") => Response::with_status(Status::Ok),
