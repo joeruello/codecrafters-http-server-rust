@@ -4,7 +4,9 @@ use std::io::Write;
 #[derive(Debug)]
 pub(crate) enum Status {
     Ok,
+    Created,
     NotFound,
+    BadRequest,
 }
 
 impl From<Status> for &[u8] {
@@ -12,6 +14,8 @@ impl From<Status> for &[u8] {
         match value {
             Status::Ok => b"200 OK",
             Status::NotFound => b"404 Not Found",
+            Status::Created => b"201 Created",
+            Status::BadRequest => b"401 Bad Request",
         }
     }
 }

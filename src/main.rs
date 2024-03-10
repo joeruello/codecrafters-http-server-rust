@@ -1,5 +1,5 @@
 use crate::{
-    request::Request,
+    request::{Method, Request},
     response::{Body, Response, Status},
 };
 use anyhow::Context;
@@ -43,13 +43,13 @@ fn handle_request(mut stream: TcpStream) -> anyhow::Result<()> {
 
     let path_parts = req.path.split("/").collect_vec();
 
-    let resp = match path_parts.get(1) {
-        Some(&"echo") => {
+    let resp = match (req.method, path_parts.get(1)) {
+        (Method::Get, Some(&"echo")) => {
             let rest = path_parts[2..].join("/");
             let body = Body::new("text/plain", rest.as_bytes());
             Response::from_status_and_body(Status::Ok, body)
         }
-        Some(&"user-agent") => {
+        (Method::Get, Some(&"user-agent")) => {
             let body = Body::new(
                 "text/plain",
                 req.headers
@@ -59,7 +59,7 @@ fn handle_request(mut stream: TcpStream) -> anyhow::Result<()> {
             );
             Response::from_status_and_body(Status::Ok, body)
         }
-        Some(&"files") => {
+        (Method::Get, Some(&"files")) => {
             let filename = path_parts.get(2).context("Should provide a filename")?;
             let dir: PathBuf = args.directory;
             let path = dir.join(filename);
@@ -71,7 +71,16 @@ fn handle_request(mut stream: TcpStream) -> anyhow::Result<()> {
                 Err(_) => Response::with_status(Status::NotFound),
             }
         }
-        Some(&"") => Response::with_status(Status::Ok),
+        (Method::Get, Some(&"")) => Response::with_status(Status::Ok),
+        (Method::Post, Some(&"files")) => match req.content {
+            Some(content) => {
+                let filename = path_parts.get(2).context("Should provide a filename")?;
+                let path = args.directory.join(filename);
+                fs::write(path, content).context("Writing file to disk")?;
+                Response::with_status(Status::Created)
+            }
+            None => Response::with_status(Status::BadRequest),
+        },
         _ => Response::with_status(Status::NotFound),
     };
 
