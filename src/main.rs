@@ -46,6 +46,8 @@ impl Response {
         w.write(b"\r\n").context("end of start line")?;
         if let Some(body) = self.body {
             body.write(w).context("Writing body")?;
+        } else {
+            w.write(b"\r\n").context("end of start line")?;
         }
         Ok(())
     }
@@ -92,6 +94,8 @@ fn main() -> anyhow::Result<()> {
                     .context("Should have 3 parts")?;
                 let path = str::from_utf8(path).context("We only support utf8 for now")?;
                 let path_parts = path.split("/").collect_vec();
+
+                eprintln!("{path_parts:?}");
 
                 let resp = match path_parts.get(1) {
                     Some(&"echo") => {
