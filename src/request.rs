@@ -14,7 +14,6 @@ impl Request {
     pub(crate) fn read(r: &mut impl Read) -> anyhow::Result<Self> {
         let mut buf = [0; 1024];
         r.read(&mut buf).context("Reading stream")?;
-        println!("buf: {buf:?}");
 
         let buf = str::from_utf8(&buf).context("Only utf8")?;
         let mut lines = buf.lines();

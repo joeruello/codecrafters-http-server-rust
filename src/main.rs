@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Context;
 use itertools::Itertools;
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 
 mod request;
 mod response;
@@ -14,36 +14,8 @@ fn main() -> anyhow::Result<()> {
 
     for stream in listener.incoming() {
         match stream {
-            Ok(mut stream) => {
-                let req = Request::read(&mut stream).context("Parsing request")?;
-
-                let path_parts = req.path.split("/").collect_vec();
-
-                eprintln!("{path_parts:?}");
-
-                let resp = match path_parts.get(1) {
-                    Some(&"echo") => {
-                        let rest = path_parts[2..].join("/");
-                        let body = Body::new("text/plain", rest.as_bytes());
-                        Response::from_status_and_body(Status::Ok, body)
-                    }
-                    Some(&"user-agent") => {
-                        let body = Body::new(
-                            "text/plain",
-                            req.headers
-                                .get("user-agent")
-                                .context("Should have a user-agent")?
-                                .as_bytes(),
-                        );
-                        Response::from_status_and_body(Status::Ok, body)
-                    }
-                    Some(&"") => Response::with_status(Status::Ok),
-                    _ => Response::with_status(Status::NotFound),
-                };
-
-                resp.write(&mut stream).context("Writing response")?;
-
-                println!("received a connection");
+            Ok(stream) => {
+                std::thread::spawn(move || handle_request(stream));
             }
             Err(e) => {
                 println!("error: {}", e);
@@ -51,5 +23,36 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn handle_request(mut stream: TcpStream) -> anyhow::Result<()> {
+    let req = Request::read(&mut stream).context("Parsing request")?;
+
+    let path_parts = req.path.split("/").collect_vec();
+
+    let resp = match path_parts.get(1) {
+        Some(&"echo") => {
+            let rest = path_parts[2..].join("/");
+            let body = Body::new("text/plain", rest.as_bytes());
+            Response::from_status_and_body(Status::Ok, body)
+        }
+        Some(&"user-agent") => {
+            let body = Body::new(
+                "text/plain",
+                req.headers
+                    .get("user-agent")
+                    .context("Should have a user-agent")?
+                    .as_bytes(),
+            );
+            Response::from_status_and_body(Status::Ok, body)
+        }
+        Some(&"") => Response::with_status(Status::Ok),
+        _ => Response::with_status(Status::NotFound),
+    };
+
+    resp.write(&mut stream).context("Writing response")?;
+
+    println!("received a connection");
     Ok(())
 }
