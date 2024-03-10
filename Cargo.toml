@@ -20,6 +20,7 @@ edition = "2021"
 # DON'T EDIT THIS!
 [dependencies]
 anyhow = "1.0.59"
+clap = { version = "4.5.2", features = ["derive"] }
 itertools = "0.11.0"
 
 [dev-dependencies]
